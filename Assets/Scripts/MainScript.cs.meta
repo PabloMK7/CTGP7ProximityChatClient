@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 988ede39704c8d94a97d8ec86b8ce540
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - statusText: {instanceID: 0}
+  - volText: {instanceID: 0}
+  - micText: {instanceID: 0}
+  - volSlider: {instanceID: 0}
+  - micSlider: {instanceID: 0}
+  - myself: {instanceID: 0}
+  - audioMixerGroup: {fileID: 6745181432257666242, guid: 0af51313c2962f84ca43b1d512f32ac5, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

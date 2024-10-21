@@ -1,5 +1,5 @@
 # CTGP-7 Proximity Chat
-The proximity chat functionality in the [CTGP-7 modpack](https://ctgp7.github.io) allows all players running the proximity chat client to hear each other in race while playing online. Voices will be adjusted depending on how far you are, as well as a few other surprises. ;)
+The proximity chat functionality in the [CTGP-7 modpack](https://ctgp-7.github.io) allows all players running the proximity chat client to hear each other in race while playing online. Voices will be adjusted depending on how far you are, as well as a few other surprises. ;)
 
 This application runs on a Windows or Linux computer and is available on both the Nintendo 3DS and Citra versions of CTGP-7.
 

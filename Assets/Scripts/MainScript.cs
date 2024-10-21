@@ -10,13 +10,16 @@ using Unity.Services.Authentication;
 using System;
 using UnityEngine.Audio;
 using Unity.VisualScripting;
+using UnityEngine.XR;
 
 public class MainScript : MonoBehaviour
 {
     public TMP_Text statusText;
+    public TMP_Text statusInd;
     public TMP_Text volText;
     public TMP_Text micText;
     public TMP_Text dopplerText;
+    public TMP_Dropdown micSelector;
 
     public Slider volSlider;
     public Slider micSlider;
@@ -43,6 +46,7 @@ public class MainScript : MonoBehaviour
     private Dictionary<string, GameObject> otherPlayers = new Dictionary<string, GameObject>();
 
     private string myname = "";
+    private bool probed = false;
     private bool loggedIn = false;
     private bool isInLobby = true;
     private bool isMirror = false;
@@ -62,6 +66,7 @@ public class MainScript : MonoBehaviour
         UPDATE_MODE = 3,
         POSITION_INFO = 4,
         PING = 5,
+        PROBE = 6,
     }
 
     private void SetMixerGroupPitch(AudioMixerGroup group, float pitch)
@@ -150,8 +155,10 @@ public class MainScript : MonoBehaviour
                 await VivoxService.Instance.SetActiveOutputDeviceAsync(dev);
             }
         }
+
         VivoxService.Instance.ParticipantAddedToChannel += VivoxParticipantJoined;
         VivoxService.Instance.ParticipantRemovedFromChannel += VivoxParticipantLeft;
+        VivoxService.Instance.AvailableInputDevicesChanged += OnMicAvailableDevicesChanged;
 
         int vol = PlayerPrefs.GetInt("vol", 100);
         int mic = PlayerPrefs.GetInt("mic", 100);
@@ -165,6 +172,8 @@ public class MainScript : MonoBehaviour
         OnMicVolumeChangedImpl(mic);
         OnDopplerValueChangedImpl(doppler);
         initializingSliders = false;
+
+        OnMicAvailableDevicesChanged();
     }
 
     private void VivoxParticipantJoined(VivoxParticipant participant)
@@ -470,6 +479,16 @@ public class MainScript : MonoBehaviour
         PacketType packetType = (PacketType)System.BitConverter.ToUInt16(packet, 0);
         System.UInt16 sequenceID = System.BitConverter.ToUInt16(packet, 2);
 
+        if (packetType == PacketType.PROBE && sequenceID == 0xFFFF)
+        {
+            if (!probed)
+            {
+                probed = true;
+                statusInd.color = Color.green;
+            }
+            return;
+        }
+
         if (packetType == PacketType.JOIN_ROOM)
         {
             currentPacketSequenceID = sequenceID;
@@ -576,6 +595,47 @@ public class MainScript : MonoBehaviour
         OnMicVolumeChangedImpl(val);
     }
 
+    public void OnMicDeviceChanged()
+    {
+        string deviceName = micSelector.options[micSelector.value].text;
+        VivoxInputDevice selectedDevice = null;
+        foreach (var dev in VivoxService.Instance.AvailableInputDevices)
+        {
+            if (dev.DeviceName == deviceName)
+            {
+                selectedDevice = dev;
+                break;
+            }
+        }
+        if (selectedDevice != null)
+        {
+            PlayerPrefs.SetString("micDev", deviceName);
+            VivoxService.Instance.SetActiveInputDeviceAsync(selectedDevice);
+        }
+    }
+
+    public void OnMicAvailableDevicesChanged()
+    {
+        string savedDevice = PlayerPrefs.GetString("micDev", "");
+        List<string> inputDevices = new List<string>();
+        VivoxInputDevice selectedDevice = null;
+        foreach (var dev in VivoxService.Instance.AvailableInputDevices)
+        {
+            if (dev.DeviceName == savedDevice)
+            {
+                selectedDevice = dev;
+            }
+            inputDevices.Add(dev.DeviceName);
+        }
+        if (selectedDevice == null)
+        {
+            selectedDevice = VivoxService.Instance.ActiveInputDevice;
+        }
+        micSelector.AddOptions(inputDevices);
+        int dropdownValue = inputDevices.FindIndex(s => s == selectedDevice.DeviceName);
+        micSelector.SetValueWithoutNotify(dropdownValue);
+    }
+
     public void OnDopplerValueChanged()
     {
         if (initializingSliders)
@@ -616,6 +676,8 @@ public class MainScript : MonoBehaviour
         {
             panelAvailability[i] = true;
         }
+
+        statusInd.color = Color.red;
 
         InitializeAsync();
     }

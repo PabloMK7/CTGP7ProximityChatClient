@@ -10,7 +10,7 @@ You can get the latest version from the [releases page](https://github.com/Pablo
 ### Setup
 1) Download the proximity chat client and run the executable in the computer that is also running CTGP-7 on Citra, or is in the same network as the real Nintendo 3DS. **If promted, give the application network access so it can connect to the 3DS/Citra.**
 2) In CTGP-7, select CTGP-7 Network and make sure to enable proximity chat in the public/private lobby selection screen.
-3) When prompted, enter the IP address shown in the proximity chat client window (if you are using Citra, you can leave it as `127.0.0.1`). You can verify the connection was successful if the status indicator turns green.
+3) When asked, enter the IP address shown in the proximity chat client window (if you are using Citra, you can leave it as `127.0.0.1`). You can verify the connection was successful if the status indicator turns green.
 4) Join any online room, and if other players are also using proximity chat, you will get connected together.
 
 ### Controls

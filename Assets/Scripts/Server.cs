@@ -51,7 +51,7 @@ public class Server : MonoBehaviour
 
     void Update()
     {
-        if(udp.Available != 0)
+        if(udp.Available != 0 )
         {
             EndPoint sender = new IPEndPoint(IPAddress.Any, port);
 

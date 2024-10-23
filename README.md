@@ -1,6 +1,9 @@
 # CTGP-7 Proximity Chat
 The proximity chat functionality in the [CTGP-7 modpack](https://ctgp-7.github.io) allows all players running the proximity chat client to hear each other in race while playing online. Voices will be adjusted depending on how far you are, as well as a few other surprises. ;)
 
+## Note from Str4ky
+This fork don't work of many bugs that could occur and also that I don't have the Vivox API key that Pablo uses in his release so to play this you're gonna have to install Pablo's version. This repo is just for reworking the UI and make it to the default program (Pablo's one)
+
 This application runs on a Windows or Linux computer and is available on both the Nintendo 3DS and Citra versions of CTGP-7.
 
 ## Download

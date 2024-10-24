@@ -18,6 +18,10 @@ You can get the latest version from the [releases page](https://github.com/Pablo
 - **Mic:** Changes the input device and adjusts its volume.
 - **Doppler:** Changes how much the other player voices change depending on their velocity.
 
+### Known issues
+- Since [Vivox lacks Linux support](https://support.unity.com/hc/en-us/articles/4780622639636-Vivox-Does-Vivox-offer-Linux-support), a native build for Linux is not possible. You may have some luck using [Wine](https://www.winehq.org/) or Steam for Linux.
+- When using the Android build, it's not possible to use the voice chat client and Citra at the same time on the same device. This is due to Unity not being able to run in the background. 
+
 Furthermore, you can adjust the volume of each participant using the slider next to their names.
 
 ## Credits

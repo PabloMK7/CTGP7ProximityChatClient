@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
@@ -9,8 +8,7 @@ using UnityEngine.UI;
 using Unity.Services.Authentication;
 using System;
 using UnityEngine.Audio;
-using Unity.VisualScripting;
-using UnityEngine.XR;
+using UnityEngine.Android;
 
 public class MainScript : MonoBehaviour
 {
@@ -20,14 +18,14 @@ public class MainScript : MonoBehaviour
     public TMP_Text micText;
     public TMP_Text dopplerText;
     public TMP_Dropdown micSelector;
+    public Button connectButton;
+    public TMP_InputField addressInput;
 
     public Slider volSlider;
     public Slider micSlider;
     public Slider dopplerSlider;
 
     public GameObject myself;
-
-    public float DopplerFactor = 0.0012f;
 
     public AudioMixer mixer;
 
@@ -41,22 +39,23 @@ public class MainScript : MonoBehaviour
 
     private Server server = null;
     private float lastPacketTime = 0;
-    private System.UInt16 currentPacketSequenceID;
 
     private Dictionary<string, GameObject> otherPlayers = new Dictionary<string, GameObject>();
 
     private string myname = "";
-    private bool probed = false;
+    private bool connected = false;
     private bool loggedIn = false;
     private bool isInLobby = true;
     private bool isMirror = false;
     private bool initializingSliders = false;
 
     private Vector3 lobbyLocation = new Vector3(500000f, 500000, 500000);
-    private float BaseDopplerFactor = 0.0012f;
+    private float BaseDopplerFactor = 0.002f;
     private float MaxDopplerDistance = 200f;
     private float MegaPitchOffset = -0.2f;
     private float SmallPitchOffset = 0.8f;
+
+    private float DopplerFactor;
 
     enum PacketType
     {
@@ -67,6 +66,36 @@ public class MainScript : MonoBehaviour
         POSITION_INFO = 4,
         PING = 5,
         PROBE = 6,
+    }
+
+    enum VectorKind
+    {
+        KIND_NORMAL_U8,
+        KIND_POSITION_U16,
+    }
+
+    private void SetStatus(string status, bool isError = false)
+    {
+        statusText.SetText(status);
+        if (isError) {
+            statusText.color = Color.red;
+        }
+        else
+        {
+            statusText.color = Color.white;
+        }
+    }
+
+    private void SetConnectedIndicator(bool connected)
+    {
+        if (connected)
+        {
+            statusInd.color = Color.green;
+        }
+        else
+        {
+            statusInd.color = Color.red;
+        }
     }
 
     private void SetMixerGroupPitch(AudioMixerGroup group, float pitch)
@@ -94,12 +123,25 @@ public class MainScript : MonoBehaviour
         return split[0];
     }
 
-    private Vector3 DeserializeVector3(byte[] packet, ref int index)
+    private Vector3 DeserializeVector3(byte[] packet, ref int index, VectorKind kind)
     {
-        float x = BitConverter.ToSingle(packet, index);
-        float y = BitConverter.ToSingle(packet, index + 4);
-        float z = BitConverter.ToSingle(packet, index + 8);
-        index += 12;
+        float x = 0, y = 0, z = 0;
+
+        switch (kind)
+        {
+            case VectorKind.KIND_NORMAL_U8:
+                x = ((sbyte)packet[index]) / 100f;
+                y = ((sbyte)packet[index + 1]) / 100f;
+                z = ((sbyte)packet[index + 2]) / 100f;
+                index += 3;
+                break;
+            case VectorKind.KIND_POSITION_U16:
+                x = BitConverter.ToInt16(packet, index) / 10f;
+                y = BitConverter.ToInt16(packet, index + 2) / 10f;
+                z = BitConverter.ToInt16(packet, index + 4) / 10f;
+                index += 6;
+                break;
+        }
 
         return new Vector3((isMirror ? x : -x), y, z);
     }
@@ -160,11 +202,16 @@ public class MainScript : MonoBehaviour
         VivoxService.Instance.ParticipantRemovedFromChannel += VivoxParticipantLeft;
         VivoxService.Instance.AvailableInputDevicesChanged += OnMicAvailableDevicesChanged;
 
+        SetStatus("Disconnected");
+        SetConnectedIndicator(false);
+
+        string address = PlayerPrefs.GetString("address", "");
         int vol = PlayerPrefs.GetInt("vol", 100);
         int mic = PlayerPrefs.GetInt("mic", 100);
         int doppler = PlayerPrefs.GetInt("doppler", 100);
 
         initializingSliders = true;
+        addressInput.text = address;
         volSlider.value = vol;
         micSlider.value = mic;
         dopplerSlider.value = doppler;
@@ -300,7 +347,7 @@ public class MainScript : MonoBehaviour
         string name = Encoding.Default.GetString(packet, 4, 64).Replace("\0", string.Empty);
         string room = Encoding.Default.GetString(packet, 4 + 64, 64).Replace("\0", string.Empty);
 
-        statusText.SetText("Connected as: " + NameToDisplayName(name));
+        SetStatus("Connected: Racing as " + NameToDisplayName(name));
 
         myname = name;
         isInLobby = true;
@@ -311,21 +358,22 @@ public class MainScript : MonoBehaviour
 
         await VivoxService.Instance.LoginAsync(options);
         await VivoxService.Instance.JoinGroupChannelAsync(room, ChatCapability.AudioOnly);
+        OnMicDeviceChanged();
 
         myself.transform.position = lobbyLocation;
         myself.transform.up = new Vector3(0, 1, 0);
         myself.transform.forward = new Vector3(0, 0, 1);
     }
 
-    private async void LeaveRoomPacketHandler(byte[] packet)
+    private async void LeaveRoomPacketHandler(byte[] packet, bool updateStatus = true)
     {
-        if (packet.Length != 4)
+        if (!loggedIn && packet.Length != 4)
             return;
 
         await VivoxService.Instance.LeaveAllChannelsAsync();
         await VivoxService.Instance.LogoutAsync();
 
-        statusText.SetText("Listening on " + server.hostString);
+        if (updateStatus) SetStatus("Connected: Waiting for race");
 
         foreach (var group in inUseAudioMixers)
         {
@@ -349,7 +397,7 @@ public class MainScript : MonoBehaviour
 
     private void SetPlayersPacketHandler(byte[] packet)
     {
-        if (packet.Length != 516)
+        if (!loggedIn && packet.Length != 516)
             return;
 
         myself.GetComponent<PlayerInfo>().playerID = -1;
@@ -383,7 +431,7 @@ public class MainScript : MonoBehaviour
 
     private void UpdateModePacketHandler(byte[] packet)
     {
-        if (packet.Length != 6)
+        if (!loggedIn && packet.Length != 6)
             return;
 
         byte mode = packet[4];
@@ -420,7 +468,7 @@ public class MainScript : MonoBehaviour
 
     private void UpdatePositionPacketHandler(byte[] packet)
     {
-        if (packet.Length != 132)
+        if (!loggedIn && packet.Length != 66)
             return;
 
         if (isInLobby)
@@ -428,13 +476,15 @@ public class MainScript : MonoBehaviour
 
         int index = 4;
         
-        Vector3 myFwd = DeserializeVector3(packet, ref index);
-        Vector3 myUp = DeserializeVector3(packet, ref index);
+        Vector3 myFwd = DeserializeVector3(packet, ref index, VectorKind.KIND_NORMAL_U8);
+        Vector3 myUp = DeserializeVector3(packet, ref index, VectorKind.KIND_NORMAL_U8);
+        myFwd.Normalize();
+        myUp.Normalize();
 
         Vector3[] pos = new Vector3[8];
         for (int i = 0; i < 8; i++)
         {
-            pos[i] = DeserializeVector3(packet, ref index);
+            pos[i] = DeserializeVector3(packet, ref index, VectorKind.KIND_POSITION_U16);
         }
 
         byte[] flags = new byte[8];
@@ -471,42 +521,31 @@ public class MainScript : MonoBehaviour
         }
     }
 
+    private void OnDisconnect()
+    {
+        connected = false;
+
+        byte[] buffer = new byte[4];
+        LeaveRoomPacketHandler(buffer, false);
+
+        server.Disconnect();
+
+        connectButton.GetComponentInChildren<TMP_Text>().text = "Connect";
+        SetStatus("Disconnected");
+        SetConnectedIndicator(false);
+    }
+
+    private void OnServerError(string error)
+    {
+        SetStatus(error, true);
+    }
+
     private void OnServerPacket(byte[] packet)
     {
         if (packet.Length < 4)
             return;
 
-        PacketType packetType = (PacketType)System.BitConverter.ToUInt16(packet, 0);
-        System.UInt16 sequenceID = System.BitConverter.ToUInt16(packet, 2);
-
-        if (packetType == PacketType.PROBE && sequenceID == 0xFFFF)
-        {
-            if (!probed)
-            {
-                probed = true;
-                statusInd.color = Color.green;
-            }
-            return;
-        }
-
-        if (packetType == PacketType.JOIN_ROOM)
-        {
-            currentPacketSequenceID = sequenceID;
-        }
-        else
-        {
-            if (!loggedIn)
-            {
-                return;
-            }
-
-            if ((sequenceID - currentPacketSequenceID) > (System.UInt16.MaxValue / 2))
-            {
-                return;
-            }
-
-            currentPacketSequenceID = sequenceID;
-        }
+        PacketType packetType = (PacketType)packet[1];
 
         switch (packetType)
         {
@@ -654,10 +693,54 @@ public class MainScript : MonoBehaviour
         OnPlayerVolumeChangedImpl(name, val);
     }
 
+    public void OnConnectButtonPressed()
+    {
+        if (connected)
+        {
+            OnDisconnect();
+        } else {
+            PlayerPrefs.SetString("address", addressInput.text);
+            if (addressInput.text.Length != 0 && server.Connect(addressInput.text))
+            {
+                connectButton.GetComponentInChildren<TMP_Text>().text = "Disconnect";
+                SetStatus("Connected: Waiting for race");
+                SetConnectedIndicator(true);
+                connected = true;
+                lastPacketTime = Time.time;
+            }
+        }
+    }
+
     void Start()
     {
+        if (Application.platform == RuntimePlatform.Android)
+        {
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
+            if (!Permission.HasUserAuthorizedPermission("android.permission.RECORD_AUDIO"))
+            {
+                Permission.RequestUserPermission("android.permission.RECORD_AUDIO");
+            }
+            if (!Permission.HasUserAuthorizedPermission("android.permission.MODIFY_AUDIO_SETTINGS"))
+            {
+                Permission.RequestUserPermission("android.permission.MODIFY_AUDIO_SETTINGS");
+            }
+            if (!Permission.HasUserAuthorizedPermission("android.permission.ACCESS_NETWORK_STATE"))
+            {
+                Permission.RequestUserPermission("android.permission.ACCESS_NETWORK_STATE");
+            }
+            if (!Permission.HasUserAuthorizedPermission("android.permission.ACCESS_WIFI_STATE"))
+            {
+                Permission.RequestUserPermission("android.permission.ACCESS_WIFI_STATE");
+            }
+            if (!Permission.HasUserAuthorizedPermission("android.permission.BLUETOOTH_CONNECT"))
+            {
+                Permission.RequestUserPermission("android.permission.BLUETOOTH_CONNECT");
+            }
+        }
+
         server = this.gameObject.GetComponent<Server>();
         server.onReceive += OnServerPacket;
+        server.onError += OnServerError;
         foreach (var panel in playerPanelControllers)
         {
             panel.onSlierValueChangedAction += OnPlayerVolumeChanged;
@@ -677,18 +760,15 @@ public class MainScript : MonoBehaviour
             panelAvailability[i] = true;
         }
 
-        statusInd.color = Color.red;
-
         InitializeAsync();
     }
 
     void Update()
     {
         // Force leave if nothing is received for 15 seconds
-        if (loggedIn && (Time.time - lastPacketTime) > 15)
+        if (connected && (Time.time - lastPacketTime) > 15)
         {
-            byte[] buffer = new byte[4];
-            LeaveRoomPacketHandler(buffer);
+            OnDisconnect();
         }
     }
 }
